@@ -41,8 +41,10 @@ Code heavily insprired by lsleep library (https://github.com/andrewstarks/lsleep
 
 #define TRUE 1
 #define FALSE 0
+#define LUAPING_VERSION "luaping 1.0"
 
 // Globals
+// https://stackoverflow.com/questions/75701
 DWORD timeout = 1000;	// in milliseconds
 
 #ifdef _WINDLL
@@ -204,7 +206,7 @@ static int luaping_ping(lua_State *L) {
   return 2;
 }
 #else
-// FIXME - non-Win not yet implemented
+// FIXME - non-_WINDLL not yet implemented
 #endif
 
 static const struct luaL_Reg luaping_metamethods [] = {
@@ -225,5 +227,7 @@ DLL int luaopen_luaping(lua_State *L){
   luaL_newlib(L, luaping_funcs);
   luaL_newlib(L, luaping_metamethods);
   lua_setmetatable(L, -2);
+  lua_pushliteral(L,LUAPING_VERSION);
+  lua_setfield(L,-2,"_VERSION");
   return 1;
 }
