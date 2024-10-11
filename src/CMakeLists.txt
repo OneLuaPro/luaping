@@ -28,7 +28,8 @@ target_include_directories(luaping PRIVATE ${LIBLUA_INCLUDEDIR})
 # setup platform-specific sources, compile and linker options
 if(WIN32 AND NOT MinGW)
   target_compile_options(luaping PRIVATE /D_WINDLL /D_WIN32 /D_CRT_SECURE_NO_WARNINGS)
-  target_link_options(luaping PRIVATE /LIBPATH:${LIBLUA_LIBDIR} liblua.lib iphlpapi.lib ws2_32.lib)
+  target_link_options(luaping PRIVATE /LIBPATH:${LIBLUA_LIBDIR}
+    liblua.lib iphlpapi.lib ws2_32.lib ntdll.lib)
 else()
   message(FATAL_ERROR "Not yet fully implemented.")
 endif()
