@@ -31,6 +31,7 @@ Code heavily insprired by lsleep library (https://github.com/andrewstarks/lsleep
 #include <icmpapi.h>
 #include <ip2string.h>
 #include <in6addr.h>
+#include <ws2tcpip.h>
 #define STATUS_SUCCESS 0x0	// FIXME: didn't find the corresponding header
 #include <ws2ipdef.h>
 #define DLL __declspec(dllexport)
@@ -168,10 +169,6 @@ static int luaping_ping(lua_State *L) {
     return luaL_error(L,"Wrong number of arguments.");
   }
 
-  // FIXME name resolver
-  // https://learn.microsoft.com/en-us/windows/win32/api/ws2tcpip/nf-ws2tcpip-getaddrinfo
-  // FIXME
-  
   unsigned long ipaddr = inet_addr(ip);
   PCSTR term;
   IN6_ADDR ip6addr, ip6srcaddr;
@@ -282,8 +279,67 @@ static int luaping_ping(lua_State *L) {
     return 2;    
   }
   else {
+    // Here we assume we got an FQHN
+    // https://learn.microsoft.com/en-us/windows/win32/api/ws2tcpip/nf-ws2tcpip-getaddrinfo
+
+    WSADATA wsaData;
+    struct addrinfo hints;
+    struct addrinfo *result = NULL;
+
+    int iResult = WSAStartup(MAKEWORD(2, 2), &wsaData);
+    if (iResult != 0) {
+      lua_pushboolean (L, FALSE);
+      lua_pushstring(L, "WSAStartup() failed with an error.");
+      return 2;
+    }
+    ZeroMemory( &hints, sizeof(hints) );
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_protocol = IPPROTO_TCP;
+    
+    getaddrinfo(ip, NULL, &hints, &result);
+
+    if (result != NULL) {
+      switch (result->ai_family) {
+      case AF_INET:
+	// IPv4 address from FQHN
+	struct sockaddr_in *sockaddr_ipv4;
+	sockaddr_ipv4 = (struct sockaddr_in *) result->ai_addr;
+	// put address on stack and recursively call luaping_ping(L) again
+	lua_settop(L, 0);	// clear stack
+	lua_pushstring(L, inet_ntoa(sockaddr_ipv4->sin_addr));
+	lua_pushinteger(L,(lua_Integer)myTimeout);
+	return luaping_ping(L);
+	break;
+      case AF_INET6:
+	// IPv6 address from FQHN
+	LPSOCKADDR sockaddr_ipv6;
+	sockaddr_ipv6 = (LPSOCKADDR) result->ai_addr;
+	char ipstringbuffer[46];
+	DWORD ipbufferlength = 46;
+	INT iRetval = WSAAddressToString(sockaddr_ipv6, (DWORD) result->ai_addrlen, NULL, 
+				     ipstringbuffer, &ipbufferlength );
+	if (iRetval) {
+	  lua_pushboolean (L, FALSE);
+	  lua_pushstring(L, "WSAAddressToString failed with an error.");
+	  return 2;
+	}
+	else {    
+	  // put address on stack and recursively call luaping_ping(L) again
+	  lua_settop(L, 0);	// clear stack
+	  lua_pushstring(L, ipstringbuffer);
+	  lua_pushinteger(L,(lua_Integer)myTimeout);
+	  return luaping_ping(L);
+	}
+	break;
+      }
+    }
+    freeaddrinfo(result);
+    WSACleanup();
+
+    // from here on not a valid FQDN or not a valif IP address
     lua_pushboolean (L, FALSE);
-    lua_pushstring(L, "Argument is not an IPv4 or IPv6 address.");
+    lua_pushstring(L, "Argument is neither a FQHN nor a valid IPv4/IPv6 address.");
     return 2;
   }
 }
