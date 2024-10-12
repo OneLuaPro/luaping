@@ -46,7 +46,8 @@ Code heavily insprired by lsleep library (https://github.com/andrewstarks/lsleep
 
 #define TRUE 1
 #define FALSE 0
-#define LUAPING_VERSION "luaping 1.0"
+#define ICPM_MSG_LEN 32
+#define LUAPING_VERSION "luaping 1.1"
 
 // Globals
 // https://stackoverflow.com/questions/75701
@@ -169,10 +170,18 @@ static int luaping_ping(lua_State *L) {
     return luaL_error(L,"Wrong number of arguments.");
   }
 
+  // try to identify IPv4 or IPv6 address numbers
   unsigned long ipaddr = inet_addr(ip);
   PCSTR term;
   IN6_ADDR ip6addr, ip6srcaddr;
   NTSTATUS ip6stat = RtlIpv6StringToAddressA(ip, &term, &ip6addr);
+
+  // generate ICPM_MSG_LEN bytes of random ICPM data
+  char SendData[ICPM_MSG_LEN];
+  srand(time(NULL));
+  for (int i=0; i<ICPM_MSG_LEN; i++) {
+    SendData[i] = (char)rand()%256;
+  }
 
   if (ipaddr != INADDR_NONE && ip6stat != STATUS_SUCCESS) {
     // got valid IPv4 address
@@ -184,7 +193,6 @@ static int luaping_ping(lua_State *L) {
       return 2;
     }
 
-    char SendData[32] = "Data Buffer";
     DWORD ReplySize = sizeof(ICMP_ECHO_REPLY) + sizeof(SendData);
     LPVOID ReplyBuffer = (VOID*) malloc(ReplySize);
     if (ReplyBuffer == NULL) {
@@ -212,7 +220,7 @@ static int luaping_ping(lua_State *L) {
     }
     else {
       lua_pushboolean (L, FALSE);
-      lua_pushstring(L, "Call to IcmpSendEcho failed.");
+      lua_pushstring(L, "No IPv4 ping echo received.");
     }
     free(ReplyBuffer);
     IcmpCloseHandle(hIcmpFile);
@@ -228,7 +236,6 @@ static int luaping_ping(lua_State *L) {
       return 2;
     }
 
-    char SendData[32] = "Data Buffer";
     DWORD ReplySize = sizeof(ICMPV6_ECHO_REPLY) + sizeof(SendData) + 8;
     LPVOID ReplyBuffer = (VOID*) malloc(ReplySize);
     if (ReplyBuffer == NULL) {
@@ -272,14 +279,14 @@ static int luaping_ping(lua_State *L) {
     }
     else {
       lua_pushboolean (L, FALSE);
-      lua_pushstring(L, "Call to Icmp6SendEcho2 failed.");
+      lua_pushstring(L, "No IPv6 ping echo received.");
     }
     free(ReplyBuffer);
     IcmpCloseHandle(hIcmp6File);
     return 2;    
   }
   else {
-    // Here we assume we got an FQHN
+    // Here we assume we got a hostname
     // https://learn.microsoft.com/en-us/windows/win32/api/ws2tcpip/nf-ws2tcpip-getaddrinfo
 
     WSADATA wsaData;
@@ -302,7 +309,7 @@ static int luaping_ping(lua_State *L) {
     if (result != NULL) {
       switch (result->ai_family) {
       case AF_INET:
-	// IPv4 address from FQHN
+	// IPv4 address from hostname
 	struct sockaddr_in *sockaddr_ipv4;
 	sockaddr_ipv4 = (struct sockaddr_in *) result->ai_addr;
 	// put address on stack and recursively call luaping_ping(L) again
@@ -312,7 +319,7 @@ static int luaping_ping(lua_State *L) {
 	return luaping_ping(L);
 	break;
       case AF_INET6:
-	// IPv6 address from FQHN
+	// IPv6 address from hostname
 	LPSOCKADDR sockaddr_ipv6;
 	sockaddr_ipv6 = (LPSOCKADDR) result->ai_addr;
 	char ipstringbuffer[46];
@@ -337,9 +344,9 @@ static int luaping_ping(lua_State *L) {
     freeaddrinfo(result);
     WSACleanup();
 
-    // from here on not a valid FQDN or not a valif IP address
+    // from here on not a valid hostname or not a valif IP address
     lua_pushboolean (L, FALSE);
-    lua_pushstring(L, "Argument is neither a FQHN nor a valid IPv4/IPv6 address.");
+    lua_pushstring(L, "No valid hostname or IPv4/IPv6 address.");
     return 2;
   }
 }
