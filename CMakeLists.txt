@@ -115,4 +115,4 @@ add_subdirectory(src)
 
 # ------------------------------------------------------------------------------
 # Install docs
-# install(DIRECTORY doc/ DESTINATION ${INSTALL_DOCDIR})	# "/" omits leading dir
+install(DIRECTORY doc/ DESTINATION ${INSTALL_DOCDIR})	# "/" omits leading dir
