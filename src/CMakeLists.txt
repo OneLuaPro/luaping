@@ -1,6 +1,6 @@
 # MIT License
 #
-# Copyright (c) 2024 Kritzel Kratzel.
+# Copyright (c) 2024-2026 Kritzel Kratzel for OneLuaPro.
 #
 # Permission is hereby granted, free of charge, to any person obtaining a copy of
 # this software and associated documentation files (the "Software"), to deal in 
@@ -25,15 +25,18 @@
 add_library(luaping SHARED)
 # setup lua include directory
 target_include_directories(luaping PRIVATE ${LIBLUA_INCLUDEDIR})
+# plattform-independend sources
+target_sources(luaping PRIVATE luaping.c)
 # setup platform-specific sources, compile and linker options
 if(WIN32 AND NOT MinGW)
-  target_compile_options(luaping PRIVATE /D_WINDLL /D_WIN32 /D_CRT_SECURE_NO_WARNINGS)
-  target_link_options(luaping PRIVATE /LIBPATH:${LIBLUA_LIBDIR}
-    liblua.lib iphlpapi.lib ws2_32.lib ntdll.lib)
+  target_compile_definitions(luaping PRIVATE
+    LUA_BUILD_AS_DLL LUA_LIB
+    _WINDLL _WIN32 _CRT_SECURE_NO_WARNINGS
+  )
+  target_link_directories(luaping PRIVATE ${LIBLUA_LIBDIR})
+  target_link_libraries(luaping liblua.lib iphlpapi.lib ws2_32.lib ntdll.lib)
 else()
   message(FATAL_ERROR "Not yet fully implemented.")
 endif()
-# plattform-independend sources
-target_sources(luaping PRIVATE luaping.c)
 # Install
 install(TARGETS luaping RUNTIME DESTINATION ${INSTALL_TOP_CDIR})

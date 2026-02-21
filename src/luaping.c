@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2024 Kritzel Kratzel.
+Copyright (c) 2024-2026 Kritzel Kratzel.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in 
@@ -27,17 +27,14 @@ Code heavily insprired by lsleep library (https://github.com/andrewstarks/lsleep
 #ifdef _WINDLL
 #include <winsock2.h>	// https://stackoverflow.com/questions/1372480
 #include <windows.h>
+#include <ws2tcpip.h>
 #include <ipexport.h>
 #include <icmpapi.h>
 #include <ip2string.h>
-#include <in6addr.h>
-#include <ws2tcpip.h>
-#define STATUS_SUCCESS 0x0	// FIXME: didn't find the corresponding header
-#include <ws2ipdef.h>
-#define DLL __declspec(dllexport)
-#else
-// #include <unistd.h>
-#define DLL //empty
+#include <time.h>
+#ifndef STATUS_SUCCESS
+#define STATUS_SUCCESS ((NTSTATUS)0x00000000L)
+#endif
 #endif
 
 #include <lua.h>
@@ -171,7 +168,10 @@ static int luaping_ping(lua_State *L) {
   }
 
   // try to identify IPv4 or IPv6 address numbers
-  unsigned long ipaddr = inet_addr(ip);
+  // unsigned long ipaddr = inet_addr(ip);
+  struct in_addr addr4;
+  int is_ipv4 = inet_pton(AF_INET, ip, &addr4);
+  unsigned long ipaddr = (is_ipv4 == 1) ? addr4.S_un.S_addr : INADDR_NONE;
   PCSTR term;
   IN6_ADDR ip6addr, ip6srcaddr;
   NTSTATUS ip6stat = RtlIpv6StringToAddressA(ip, &term, &ip6addr);
@@ -259,7 +259,9 @@ static int luaping_ping(lua_State *L) {
     destAddr.sin6_family = AF_INET6;
     destAddr.sin6_addr = ip6addr;
 
-    DWORD dwRetVal = Icmp6SendEcho2(hIcmp6File, NULL, NULL, NULL, &srcAddr, &destAddr,
+    DWORD dwRetVal = Icmp6SendEcho2(hIcmp6File, NULL, NULL, NULL,
+				    (struct sockaddr_in6 *)&srcAddr,
+				    (struct sockaddr_in6 *)&destAddr,
 				    SendData, sizeof(SendData), 
 				    NULL, ReplyBuffer, ReplySize, myTimeout);
 
@@ -306,39 +308,46 @@ static int luaping_ping(lua_State *L) {
     
     getaddrinfo(ip, NULL, &hints, &result);
 
-    if (result != NULL) {
+    if (result != NULL){
       switch (result->ai_family) {
       case AF_INET:
-	// IPv4 address from hostname
-	struct sockaddr_in *sockaddr_ipv4;
-	sockaddr_ipv4 = (struct sockaddr_in *) result->ai_addr;
-	// put address on stack and recursively call luaping_ping(L) again
-	lua_settop(L, 0);	// clear stack
-	lua_pushstring(L, inet_ntoa(sockaddr_ipv4->sin_addr));
-	lua_pushinteger(L,(lua_Integer)myTimeout);
-	return luaping_ping(L);
-	break;
+	{
+	  // IPv4 address from hostname
+	  struct sockaddr_in *sockaddr_ipv4;
+	  sockaddr_ipv4 = (struct sockaddr_in *) result->ai_addr;
+	  char ip_buf[INET_ADDRSTRLEN];
+	  if (inet_ntop(AF_INET, &(sockaddr_ipv4->sin_addr), ip_buf, sizeof(ip_buf))) {
+	    lua_settop(L, 0);    // clear stack
+	    lua_pushstring(L, ip_buf);
+	    lua_pushinteger(L, (lua_Integer)myTimeout);
+	    return luaping_ping(L);
+	  }
+	  else {
+	    return luaL_error(L, "failed to convert IPv4 address");
+	  }
+	  break;
+	}
       case AF_INET6:
-	// IPv6 address from hostname
-	LPSOCKADDR sockaddr_ipv6;
-	sockaddr_ipv6 = (LPSOCKADDR) result->ai_addr;
-	char ipstringbuffer[46];
-	DWORD ipbufferlength = 46;
-	INT iRetval = WSAAddressToString(sockaddr_ipv6, (DWORD) result->ai_addrlen, NULL, 
-				     ipstringbuffer, &ipbufferlength );
-	if (iRetval) {
-	  lua_pushboolean (L, FALSE);
-	  lua_pushstring(L, "WSAAddressToString failed with an error.");
-	  return 2;
+	{
+	  // IPv6 address from hostname
+	  // LPSOCKADDR sockaddr_ipv6;
+	  struct sockaddr_in6 *sockaddr_ipv6;
+	  sockaddr_ipv6 = (struct sockaddr_in6 *) result->ai_addr;
+	  char ip_buf[INET6_ADDRSTRLEN];
+	  if (inet_ntop(AF_INET6, &(sockaddr_ipv6->sin6_addr), ip_buf, sizeof(ip_buf))) {
+	    // put address on stack and recursively call luaping_ping(L) again
+	    lua_settop(L, 0);	// clear stack
+	    lua_pushstring(L, ip_buf);
+	    lua_pushinteger(L, (lua_Integer)myTimeout);
+	    return luaping_ping(L);
+	  }
+	  else {
+	    lua_pushboolean(L, FALSE);
+	    lua_pushstring(L, "inet_ntop (IPv6) failed with an error.");
+	    return 2;
+	  }
+	  break;
 	}
-	else {    
-	  // put address on stack and recursively call luaping_ping(L) again
-	  lua_settop(L, 0);	// clear stack
-	  lua_pushstring(L, ipstringbuffer);
-	  lua_pushinteger(L,(lua_Integer)myTimeout);
-	  return luaping_ping(L);
-	}
-	break;
       }
     }
     freeaddrinfo(result);
@@ -368,7 +377,7 @@ static const struct luaL_Reg luaping_funcs [] = {
   {NULL, NULL}
 };
 
-DLL int luaopen_luaping(lua_State *L){
+LUALIB_API int luaopen_luaping(lua_State *L){
   luaL_newlib(L, luaping_funcs);
   luaL_newlib(L, luaping_metamethods);
   lua_setmetatable(L, -2);
