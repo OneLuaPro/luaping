@@ -1,7 +1,7 @@
 /*
 MIT License
 
-Copyright (c) 2024-2026 Kritzel Kratzel.
+Copyright (c) 2024-2026 Kritzel Kratzel for OneLuaPro.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy of
 this software and associated documentation files (the "Software"), to deal in 
@@ -44,7 +44,7 @@ Code heavily insprired by lsleep library (https://github.com/andrewstarks/lsleep
 #define TRUE 1
 #define FALSE 0
 #define ICPM_MSG_LEN 32
-#define LUAPING_VERSION "luaping 1.1"
+#define LUAPING_VERSION "luaping 1.1.2"
 
 // Globals
 // https://stackoverflow.com/questions/75701
@@ -168,7 +168,6 @@ static int luaping_ping(lua_State *L) {
   }
 
   // try to identify IPv4 or IPv6 address numbers
-  // unsigned long ipaddr = inet_addr(ip);
   struct in_addr addr4;
   int is_ipv4 = inet_pton(AF_INET, ip, &addr4);
   unsigned long ipaddr = (is_ipv4 == 1) ? addr4.S_un.S_addr : INADDR_NONE;
@@ -330,7 +329,6 @@ static int luaping_ping(lua_State *L) {
       case AF_INET6:
 	{
 	  // IPv6 address from hostname
-	  // LPSOCKADDR sockaddr_ipv6;
 	  struct sockaddr_in6 *sockaddr_ipv6;
 	  sockaddr_ipv6 = (struct sockaddr_in6 *) result->ai_addr;
 	  char ip_buf[INET6_ADDRSTRLEN];
@@ -363,13 +361,6 @@ static int luaping_ping(lua_State *L) {
 // FIXME - non-_WINDLL not yet implemented
 #endif
 
-static const struct luaL_Reg luaping_metamethods [] = {
-  {"__call", luaping_ping},
-  {"__call", luaping_timeout},
-  {"__call", luaping_settimeout},
-  {NULL, NULL}
-};
-
 static const struct luaL_Reg luaping_funcs [] = {
   {"ping", luaping_ping},
   {"timeout", luaping_timeout},
@@ -379,8 +370,6 @@ static const struct luaL_Reg luaping_funcs [] = {
 
 LUALIB_API int luaopen_luaping(lua_State *L){
   luaL_newlib(L, luaping_funcs);
-  luaL_newlib(L, luaping_metamethods);
-  lua_setmetatable(L, -2);
   lua_pushliteral(L,LUAPING_VERSION);
   lua_setfield(L,-2,"_VERSION");
   return 1;
